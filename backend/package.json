@@ -1,0 +1,11 @@
+{
+    "name": "backend-scalable-chat",
+    "version": "1.0.0",
+    "description": "Backend for the scalable chat app, tested on Node v. 17.6.0",
+    "main": "server.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "author": "Jani Heinikoski",
+    "license": "ISC"
+}
