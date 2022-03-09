@@ -78,16 +78,17 @@ Choose an option ${nickname}:
                 case "5":
                     let channel = await getInput(`Enter the channel's name`);
                     console.clear();
-                    if (channelMessages.get(channel)) {
-                        for (const msg of channelMessages.get(channel)) {
-                            console.log(msg);
-                        }
-                    }
                     notifyNewMessage = (obj) => {
                         if (obj && obj.success) {
                             console.log(`\n${obj.from} > ${obj.msg}`);
                         }
                     };
+                    if (channelMessages.get(channel)) {
+                        for (const msg of channelMessages.get(channel)) {
+                            notifyNewMessage(msg);
+                        }
+                    }
+                    console.log("SEND q TO EXIT FROM THE CHANNEL CHAT");
                     while (true) {
                         temp = await question("");
                         if (temp === "q") {
@@ -120,7 +121,9 @@ const onSocketReceiveData = (data, socket) => {
                     console.log(
                         "Nickname is already reserved, restart and try again..."
                     );
-                    process.exit(0);
+                    socket.destroy();
+                    main();
+                    return;
                 }
                 nickname = obj.nickname;
                 console.log("Connection established successfully\n");
@@ -146,6 +149,7 @@ const onSocketReceiveData = (data, socket) => {
                 if (notifyNewMessage) {
                     notifyNewMessage(obj);
                 }
+                channelMessages.get(obj.channel).push(obj);
                 break;
         }
     } catch (ex) {}
