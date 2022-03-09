@@ -183,7 +183,6 @@ const onSocketError = async (err, socket) => {
         console.log("Can't connect to the server, exiting...\n");
     } else {
         console.log("Unexpected error was thrown, exiting...\n");
-        throw err;
     }
     process.exit(-1);
 };
@@ -199,10 +198,15 @@ const main = async () => {
     console.log(`\nHello ${nickName}\n`);
     // Get the IP-address of the server
     const serverIP = await getInput("Enter the server's IP-address");
+    if (!serverIP || serverIP.length < 1) {
+        console.log("\nServer IP can't be empty\n");
+        main();
+        return;
+    }
     console.log(`Connecting to ${serverIP}`);
     // Connect to the server
     const clientSocket = net.createConnection(
-        { host: "127.0.0.1", port: 3000 },
+        { host: serverIP, port: 3000 },
         () => {
             clientSocket.write(
                 JSON.stringify({ msg: nickName, cmd: REQUEST_NICKNAME })
