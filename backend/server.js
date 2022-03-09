@@ -4,6 +4,8 @@ const cluster = require("cluster");
 const process = require("process");
 const { cpus } = require("os");
 const net = require("net");
+// Server's IP
+const HOST_IP = "127.0.0.1";
 // Number of cores in the system, used to spawn nOfCPUs amount of workers
 const nOfCPUs = cpus().length;
 // Operation codes for client - server & master - worker communication
@@ -264,7 +266,7 @@ if (cluster.isPrimary) {
     // Event listener for messages from the process
     process.on("message", onWorkerReceivedMsg);
     // Start listening on host:port
-    server.listen({ host: "127.0.0.1", port: 3000 }, () => {
+    server.listen({ host: HOST_IP, port: 3000 }, () => {
         console.log("Listening on ", server.address());
     });
 }
