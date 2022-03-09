@@ -77,6 +77,18 @@ Choose an option ${nickname}:
                     break;
                 case "5":
                     let channel = await getInput(`Enter the channel's name`);
+                    let subscribed = false;
+                    for (const key of channelMessages.keys()) {
+                        if (channel === key) {
+                            subscribed = true;
+                            break;
+                        }
+                    }
+                    if (!subscribed) {
+                        console.log("You are not subscribed to the channel.");
+                        await getInput("Hit enter to continue");
+                        break;
+                    }
                     console.clear();
                     notifyNewMessage = (obj) => {
                         if (obj && obj.success) {
