@@ -1,11 +1,14 @@
 // Author: Jani Heinikoski, Created: 08.03.2022
 // Sources: Node.js v17.6.0 documentation
 const net = require("net");
-const readline = require("readline").createInterface({
+const readline = require("readline");
+const readlineInterface = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
 });
-const question = require("util").promisify(readline.question).bind(readline);
+const question = require("util")
+    .promisify(readlineInterface.question)
+    .bind(readlineInterface);
 // Operation codes for communicating with the server
 const REQUEST_NICKNAME = 1;
 const PRIVATE_MESSAGE = 2;
@@ -70,6 +73,9 @@ Choose an option ${nickname}:
                     break;
                 case "4":
                     console.clear();
+                    if (channelMessages.size === 0) {
+                        console.log("You have no subscriptions yet.");
+                    }
                     for (const key of channelMessages.keys()) {
                         console.log(key);
                     }
@@ -92,7 +98,9 @@ Choose an option ${nickname}:
                     console.clear();
                     notifyNewMessage = (obj) => {
                         if (obj && obj.success) {
+                            readline.cursorTo(process.stdout, 0);
                             console.log(`\n${obj.from} > ${obj.msg}`);
+                            readlineInterface.prompt(true);
                         }
                     };
                     if (channelMessages.get(channel)) {
@@ -145,12 +153,12 @@ const onSocketReceiveData = (data, socket) => {
                 privateMessages.push(obj);
                 break;
             case REQUEST_JOIN_CHANNEL:
+                console.clear();
                 if (!obj.success) {
                     console.log(
                         "\nCould not join channel, enter to continue..."
                     );
                 } else {
-                    console.clear();
                     console.log(
                         `\nJoined channel ${obj.msg}, enter to continue...`
                     );
@@ -183,6 +191,11 @@ const onSocketError = async (err, socket) => {
 const main = async () => {
     // Set the user's nickname for the server
     const nickName = await getInput("Choose your nickname");
+    if (!nickName || nickName.length < 1) {
+        console.log("\nNickname can't be empty\n");
+        main();
+        return;
+    }
     console.log(`\nHello ${nickName}\n`);
     // Get the IP-address of the server
     const serverIP = await getInput("Enter the server's IP-address");
