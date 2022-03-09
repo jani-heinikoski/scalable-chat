@@ -9,6 +9,8 @@ const nOfCPUs = cpus().length;
 // Operation codes for client - server & master - worker communication
 const REQUEST_NICKNAME = 1;
 const PRIVATE_MESSAGE = 2;
+const REQUEST_JOIN_CHANNEL = 3;
+const CHANNEL_MESSAGE = 4;
 const RELEASE_NICKNAME = 11;
 // Operation codes for master - worker communication
 // Main process uses this to store already reserved nicknames of workers
@@ -19,6 +21,13 @@ const pendingNicknameRequests = [];
 // Workers use this to maintain record which nickname belongs to which socket
 // so that the nicknames can be released when a socket dies.
 const socketNicknames = [];
+// Workers use this to determine which clients are subscribed to a channel
+// Key - name of the channel, value - array of connected sockets
+const channelSubscriptions = new Map();
+// Initialize the map with some hardcoded channels
+for (let x = 1; x < 11; x++) {
+    channelSubscriptions.set(`CH${x}`, []);
+}
 // Utility functions
 const validateNicknameRequest = (obj) => {
     if (
@@ -44,6 +53,34 @@ const validatePrivateMessage = (obj) => {
     }
     return true;
 };
+const validateJoinChannelRequest = (obj, socket) => {
+    if (
+        !obj ||
+        obj.cmd !== REQUEST_JOIN_CHANNEL ||
+        !obj.msg ||
+        obj.msg.length < 1 ||
+        !channelSubscriptions.get(obj.msg)
+    ) {
+        return false;
+    }
+    // Check if the client is already subscribed
+    for (const subscribedSocket of channelSubscriptions.get(obj.msg)) {
+        if (socket === subscribedSocket) {
+            return false;
+        }
+    }
+    return true;
+};
+const validateChannelMessage = (obj) => {
+    return !(
+        !obj ||
+        obj.cmd !== CHANNEL_MESSAGE ||
+        !obj.msg ||
+        obj.msg.length < 1 ||
+        !obj.channel ||
+        obj.channel.length < 1
+    );
+};
 const appendSenderNicknameToObj = (obj, socket) => {
     const senderNickname = socketNicknames.find(
         (e) => e.socket === socket
@@ -66,12 +103,16 @@ const onSocketReceiveData = (data, socket) => {
         if (validateNicknameRequest(obj)) {
             pendingNicknameRequests.push({ socket: socket, nickname: obj.msg });
             process.send(obj);
-        } else if (validatePrivateMessage(obj, socket)) {
+        } else if (validateJoinChannelRequest(obj, socket)) {
+            channelSubscriptions.get(obj.msg).push(socket);
+            socket.write(JSON.stringify({ ...obj, success: true }));
+        } else if (validatePrivateMessage(obj) || validateChannelMessage(obj)) {
             appendSenderNicknameToObj(obj, socket);
             process.send(obj);
+        } else {
+            socket.write(JSON.stringify({ ...obj, success: false }));
         }
     } catch (ex) {}
-    socket.write(JSON.stringify({ msg: "Invalid request", success: false }));
 };
 // Fired when the socket closes
 const onSocketClosed = (erroneus) => {
@@ -85,6 +126,12 @@ const onSocketClosed = (erroneus) => {
         process.send({ msg: socketNamePair.nickname, cmd: RELEASE_NICKNAME });
         // Remove the pair from memory
         socketNicknames.splice(socketNicknames.indexOf(socketNamePair));
+    }
+    // Remove the socket from channel subscriptions
+    let socket;
+    for (const subs of channelSubscriptions.values()) {
+        socket = subs.find((elem) => elem.destroyed === true);
+        subs.splice(subs.indexOf(socket));
     }
 };
 // Fired when socket throws an error
@@ -116,6 +163,7 @@ const onMasterReceivedMsg = (obj, worker, broadcastToWorkers) => {
                     success: true,
                 });
                 break;
+            case CHANNEL_MESSAGE:
             case PRIVATE_MESSAGE:
                 broadcastToWorkers(obj);
                 break;
@@ -135,7 +183,6 @@ const onMasterReceivedMsg = (obj, worker, broadcastToWorkers) => {
 };
 // Fired when a worker receives a message from the master process
 const onWorkerReceivedMsg = (obj) => {
-    console.log(obj);
     if (!obj) {
         return;
     }
@@ -158,12 +205,20 @@ const onWorkerReceivedMsg = (obj) => {
             break;
         case PRIVATE_MESSAGE:
             for (const socketNamePair of socketNicknames) {
-                console.log("orevaaaa", socketNamePair.nickname, obj.to);
                 if (socketNamePair.nickname === obj.to) {
                     socketNamePair.socket.write(
                         JSON.stringify({ ...obj, success: true })
                     );
                 }
+            }
+            break;
+        case CHANNEL_MESSAGE:
+            for (const subscribedSocket of channelSubscriptions.get(
+                obj.channel
+            )) {
+                subscribedSocket.write(
+                    JSON.stringify({ ...obj, success: true })
+                );
             }
             break;
     }
@@ -203,8 +258,8 @@ if (cluster.isPrimary) {
     });
     // Specify error handler for the TCP server
     server.on("error", (err) => {
-        console.log("Server error");
-        console.log(err);
+        console.error(err);
+        process.exit(-1);
     });
     // Event listener for messages from the process
     process.on("message", onWorkerReceivedMsg);

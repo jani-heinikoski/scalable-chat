@@ -9,11 +9,15 @@ const question = require("util").promisify(readline.question).bind(readline);
 // Operation codes for communicating with the server
 const REQUEST_NICKNAME = 1;
 const PRIVATE_MESSAGE = 2;
+const REQUEST_JOIN_CHANNEL = 3;
+const CHANNEL_MESSAGE = 4;
 // Arrays for storing the messages
 const privateMessages = [];
-const channelMessages = [];
+const channelMessages = new Map();
 // Variable for holding the nickname gotten from the server
 let nickname;
+// Used to notify interactive channel chats of new messages
+let notifyNewMessage = null;
 // Gets user input from stdin
 const getInput = async (text) => {
     const answer = await question(`${text}> `);
@@ -27,8 +31,9 @@ const cli = async (socket) => {
 Choose an option ${nickname}:
 1) View private messages
 2) Send a private message
-3) Join channel
-4) View channels
+3) Subscribe to a channel
+4) View channels you have subscribed to
+5) Chat in a channel
 0) EXIT\n`;
     while (true) {
         console.log(MENU);
@@ -53,6 +58,51 @@ Choose an option ${nickname}:
                             cmd: PRIVATE_MESSAGE,
                         })
                     );
+                    break;
+                case "3":
+                    temp = await getInput(`Enter the channel's name`);
+                    socket.write(
+                        JSON.stringify({
+                            msg: temp,
+                            cmd: REQUEST_JOIN_CHANNEL,
+                        })
+                    );
+                    break;
+                case "4":
+                    console.clear();
+                    for (const key of channelMessages.keys()) {
+                        console.log(key);
+                    }
+                    await getInput("Hit enter to continue");
+                    break;
+                case "5":
+                    let channel = await getInput(`Enter the channel's name`);
+                    console.clear();
+                    if (channelMessages.get(channel)) {
+                        for (const msg of channelMessages.get(channel)) {
+                            console.log(msg);
+                        }
+                    }
+                    notifyNewMessage = (obj) => {
+                        if (obj && obj.success) {
+                            console.log(`\n${obj.from} > ${obj.msg}`);
+                        }
+                    };
+                    while (true) {
+                        temp = await question("");
+                        if (temp === "q") {
+                            notifyNewMessage = null;
+                            break;
+                        } else {
+                            socket.write(
+                                JSON.stringify({
+                                    msg: temp,
+                                    channel: channel,
+                                    cmd: CHANNEL_MESSAGE,
+                                })
+                            );
+                        }
+                    }
                     break;
             }
         }
@@ -79,12 +129,26 @@ const onSocketReceiveData = (data, socket) => {
             case PRIVATE_MESSAGE:
                 privateMessages.push(obj);
                 break;
+            case REQUEST_JOIN_CHANNEL:
+                if (!obj.success) {
+                    console.log(
+                        "\nCould not join channel, enter to continue..."
+                    );
+                } else {
+                    console.clear();
+                    console.log(
+                        `\nJoined channel ${obj.msg}, enter to continue...`
+                    );
+                    channelMessages.set(obj.msg, []);
+                }
+                break;
+            case CHANNEL_MESSAGE:
+                if (notifyNewMessage) {
+                    notifyNewMessage(obj);
+                }
+                break;
         }
-    } catch (ex) {
-        console.log("Got malformed data from the server, exiting...");
-        socket.destroy();
-        process.exit(-1);
-    }
+    } catch (ex) {}
 };
 // Fired when the client socket throws an error
 const onSocketError = async (err, socket) => {
